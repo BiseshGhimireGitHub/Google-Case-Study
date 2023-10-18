@@ -1,0 +1,356 @@
+---
+title: "Bellabeat Booms"
+author: "Bisesh Ghimire"
+date: "10/12/2023"
+output: html_document
+---
+Google Case Study
+
+This is a case study as part of the capstone project for Google Data Analytics certification. We will be compiling and analyzing fitness devices data via FitBit in order to give insights to Bellabeat-a small fitness company, that creates health and fitness products typically for women. The format of the report was done according to Google's formula of: ASK, PREPARE, PROCESS, ANALYZE, SHARE, and ACT
+
+<span style="color: ##0000FF; font-size: 1.3em;">About:</span> 
+
+Bellabeat is a cutting-edge tech firm specializing in the production of smart health-centric products. By aggregating information on activity, sleep, stress, and reproductive health, Bellabeat is able to equip women with valuable insights into their own well-being and routines. Since its establishment in 2013, Bellabeat has experienced swift growth and has promptly established itself as a leading technology-driven wellness company tailored to women.
+
+<span style="color: #FF6666; font-size: 1.5em;">Ask:</span>
+
+Key Stakeholders:
+Urška Sršen: Cofounder and Chief Creative Officer
+Sando Mur: Cofounder and Mathematician
+
+Business Task:
+  Analyze smart device usage data in order to gain insight into how consumers use non-Bellabeat smart devices.
+
+  Select one Bellabeat product to apply these insights to.
+
+      What are some trends in smart device usage?
+      How could these trends apply to Bellabeat customers?
+      How could these trends help influence Bellabeat marketing strategy?
+
+<span style="color: #FF6666; font-size: 1.5em;">Prepare:</span>
+Is the data reliable/are we allowed to use the data?:
+  The data, FitBit Fitness Tracker Data, was collected through a public domain via Möbius.
+  Looking at the metadata we can confirm its open source
+  
+  Unfortunately the data is limited to 33 users, and when merging with other data sets the number of unique customers becomes even smaller. The conclusions here have to be taken with a grain of salt as preferred sample size was not maintained. Data related to heartbeat and weight before & after we're ignored as the sample size was under 10. 
+
+<u>Data preparation:</u> 
+More information is given as we go chart by chart. However as an overview, the hourly data duplicates were checked and removed in excel.Separate hourly data variables were merged into a single sheet using power query, to make our analysis easier in R.
+
+While for the daily data, duplicates were checked through R directly. Both files did not have major duplicate issue other than a few null rows which were subsequently removed. Throughout the project several tweaks had to be made to the data to allow the code to work. Including merging sleep and daily data, which required the renaming of time column to get a working inner join. Time(in m/d/y format) had to be converted to just the hour or day, depending on the type of data we were trying to extract.
+
+<span style="color: #FF6666; font-size: 1.5em;">Process/Analyze:</span>
+Since this is an r-markdown, and each step is well documented I've decided to combine the two sections
+There is detailed information to the process of gathering data, and analyses based on that data for each chart
+```{r setup, echo=TRUE,include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("readxl")
+library(ggpubr)
+library(tidyverse)
+library(broom)
+library(gclus)
+library(dplyr)
+library(sqldf)
+library("ggplot2")
+```
+
+## Installing packages
+
+First we installed and loaded several packages, including readxl, which gives us the ability to read the excel files onto RStudio. Although we can go over all the packages we will focus on the most important ones here. This includes sqldf, which allowed us to manipulate dataframes use SQL. Along with ggplot2, which gives us the ability to give beautiful visualizations to the data we've found. 
+
+```{r}
+library("readxl")
+library(ggpubr)
+library(tidyverse)
+library(broom)
+library(gclus)
+library(dplyr)
+library(sqldf)
+library("ggplot2")
+```
+
+## Introduction
+We first worked with hourly data. Data was cleaned and duplicates were checked for through Excel. The files were given separately by Calories, Steps, and Intensity, I merged all 3 into 1 sheet using power query. Our first table was created using sqldf, where took the data of all users and found the average by hour. Activity was given a time format that was causing an issue, so we had to change the format to one that would allow for the calculations
+```{r}
+hrTotal <- read_excel("~/Downloads/hrTotals.xlsx")
+hrTotal
+
+
+#averaged Calories by hour of the day throughout the month
+hourAvgCaldf <- hrTotal %>%
+       mutate(Activity = as.POSIXct(Activity, format="%H:%M:%S")) %>%
+       group_by(hour = lubridate::hour(Activity)) %>%
+       summarise(avg_calories = mean(Calories))
+hourAvgCaldf
+```
+
+## First Insight
+
+Now to visualize: Chart started with a break at 40 to better highlight the differences. It is clear that people on average are most active between 5-7 p.m. (most likely when people get off work and workout). 
+```{r pressure, echo=FALSE}
+CaloriesByHourChart <- ggplot(hourAvgCaldf, aes(x = factor(hour), y = avg_calories, fill = avg_calories)) +
+  geom_col() +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Average Calories burned by Hour", 
+       x = "Hour", 
+       y = "Average Calories") +
+  theme_minimal() +
+  scale_x_discrete(breaks = seq(0, 24, by = 3), labels = seq(0, 24, by = 3)) +
+  coord_cartesian(ylim = c(40, max(hourAvgCaldf$avg_calories)))
+CaloriesByHourChart
+```
+
+## Steps vs time shows similar data
+
+From the chart below we can see similar data to the previous chart, 
+Here I've also given a chance to visualize the code that created these plots. We also notice there are 2 activity "spike" times one between 12-3 p.m. and one between 5-7 p.m. I've also given a chance to see the code that generates the plot, you'll notice ggplot package being used, and how the color combinations were set. 
+```{r}
+hourAvgStepsdf <- hrTotal %>%
+  mutate(Activity = as.POSIXct(Activity, format="%H:%M:%S")) %>%
+  group_by(hour = lubridate::hour(Activity)) %>%
+  summarise(avg_steps = mean(Steps))
+hourAvgStepsdf
+#made a chart with hourAvgStepsdf to visualize steps walked by hour, using scale fill gradient to highlight the more "active" hours
+StepsByHourChart<-ggplot(hourAvgStepsdf, aes(x = factor(hour), y = avg_steps, fill = avg_steps)) +
+  geom_col() +
+  scale_fill_gradient(low = "lightblue", high = "darkred") +
+  labs(title = "Steps by Hour", 
+       x = "Hour", 
+       y = "Average Steps") +
+  theme_minimal() +
+  scale_x_discrete(breaks = seq(0, 24, by = 3), labels = seq(0, 24, by = 3))
+StepsByHourChart
+```
+
+## Final time comparison chart 
+
+The data given had an "Intensity" column which was a metric for the type of activity the person was doing. Here we compare the average intensity vs hour. We see similar data to the first two charts.
+
+```{r, echo=FALSE}
+
+#averaged intensity for all customers by hour throughout the month
+hourAvgIntensitysdf <- hrTotal %>%
+  mutate(Activity = as.POSIXct(Activity, format="%H:%M:%S")) %>%
+  group_by(hour = lubridate::hour(Activity)) %>%
+  summarise(average_intensity = mean(Intensity))
+hourAvgIntensitysdf
+#made a chart with hourAvgIntensitysdf to visualize intensity by hour, using scale fill gradient to highlight the more "active" hours
+IntensityByHourChart<-ggplot(hourAvgIntensitysdf, aes(x = factor(hour), y = average_intensity, fill = average_intensity)) +
+  geom_col() +
+  scale_fill_gradient(low = "lightblue", high = "darkgreen") +
+  labs(title = "Intensity by Hour", 
+       x = "Hour", 
+       y = "Intensity") +
+  theme_minimal() +
+  scale_x_discrete(breaks = seq(0, 24, by = 3), labels = seq(0, 24, by = 3))
+IntensityByHourChart
+```
+
+## Switching to Daily data
+
+I then looked at the daily data which included steps, calories, and the minutes a user was active(including how active) or inactive for a day. Duplicate management was done on R for this file. We then look at the summary of the entire dataset and a table for mean values for all columns. The output of '0' is the output for when we ran sum(duplicated("our data")), which would sum up all the times a duplicate was found.
+
+```{r,echo=FALSE}
+dailyTotal <- read_excel("~/Downloads/dailyActivity_merged.xlsx")
+dailyTotal
+#check for duplicates and number of IDs
+sum(duplicated(dailyTotal))
+#summary of column data + add more finds
+summary(dailyTotal)
+#average all column data for the month by User ID
+
+```
+
+## Converting data 
+
+I then wanted to convert our time column which was given in a d/m/y format to the actual day of the week. To see if we could draw any insights for our data variable against specific days (i.e. most calories are burned on average on Thursdays)
+
+```{r,echo=FALSE}
+dailyTotalByDay <- dailyTotal %>%
+  mutate(ActivityDate = wday(ymd(ActivityDate), label = TRUE, abbr = FALSE)) %>%
+  rename(Day = ActivityDate)
+head(dailyTotalByDay)
+
+```
+
+## Steps by Day
+
+Now with our updated data table, we are able to find the average steps walked by day of the week.
+
+```{r}
+#creating table to summarize average steps vs the day of the week
+average_steps_by_day <- dailyTotalByDay %>%
+  group_by(Day) %>%
+  summarise(avg_steps = mean(TotalSteps))
+average_steps_by_day
+#a chart to visualize average steps between all users vs day of the week
+steps_by_day_chart <- ggplot(average_steps_by_day, aes(x = Day, y = avg_steps)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Average Steps by Day of the Week", 
+       x = "Weekday", 
+       y = "Average Steps") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(6600, max(average_steps_by_day$avg_steps), by = 200)) +
+  coord_cartesian(ylim = c(6600, max(average_steps_by_day$avg_steps)))
+steps_by_day_chart
+```
+Here we can see that Tuesday and Saturday seem to be the most active day and Sunday is the least active. 
+
+## Very Active by Day
+
+There was a column in the data which showed the number of minutes a person was "Very Active" in a day. Using similar code to the previous chart and table, we were able to get this table & chart. 
+```{r,echo=FALSE}
+#now to replicate, but this time we will compare to Very Active Minutes
+
+veryActive_by_day <- dailyTotalByDay %>%
+  group_by(Day) %>%
+  summarise(avg_veryActive_minutes = mean(VeryActiveMinutes))
+veryActive_by_day
+
+#made a chart to visualize, there seems to be at least 15-17 minutes on average for every day so we included a break to start chart at 18 to better highlight the differences by day
+
+veryActive_chart <- ggplot(veryActive_by_day, aes(x = Day, y = avg_veryActive_minutes)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  labs(title = "Very Active Minutes by Day", 
+       x = "Weekday", 
+       y = "Very Active minutes") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(18, max(veryActive_by_day$avg_veryActive_minutes), by = 1)) +
+  coord_cartesian(ylim = c(18, max(veryActive_by_day$avg_veryActive_minutes)))
+veryActive_chart
+```
+Here we see that the data is slightly different from the steps data. This chart suggests that Tuesday and Saturday are active as well, however shows Monday as the most active day.
+
+## Sedentary Minutes
+
+We then compare average Sedentary minutes(no activity) by the day of the week.
+
+```{r,echo=FALSE}
+sedentaryMinutes_by_day <- dailyTotalByDay %>%
+  group_by(Day) %>%
+  summarise(avg_sedentary_minutes = mean(SedentaryMinutes))
+sedentaryMinutes_by_day
+
+#made a chart to visualize, there seems to be at least 950 minutes on average for every day so we included a break to start chart at 950 to better highlight the differences by day
+#although the very active and steps charts seem similar, sedentary minutes gives us new information as it seems that most sedentary minutes occur on Monday and Friday
+#contradicting the information shown in the other two charts which suggest these are more active days for people (or is it a mix of both?)
+
+sedentary_chart <- ggplot(sedentaryMinutes_by_day, aes(x = Day, y = avg_sedentary_minutes)) +
+  geom_bar(stat = "identity", fill = "darkolivegreen") +
+  labs(title = "Sedentary Minutes by Day", 
+       x = "Weekday", 
+       y = "Sedentary minutes") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(950, max(sedentaryMinutes_by_day$avg_sedentary_minutes), by = 30)) +
+  coord_cartesian(ylim = c(950, max(sedentaryMinutes_by_day$avg_sedentary_minutes)))
+sedentary_chart
+```
+
+As you'll notice there is some conflicting data as Monday is shown here as the day of least activity. When looking further we notice that Mondays tend to have high variability towards the polar "extremes." Suggesting there is a group of people that want to be really active to start the week, and another group of people who want to start the week lightly-which could be work related. 
+
+## Calories burned by Day
+Our final comparison of this type was against calories burned on average by day. Code is not shown as it is similar logic to previous two.
+
+```{r, echo=FALSE}
+#finally we will do the same process for calories
+
+average_calories_by_day <- dailyTotalByDay %>%
+  group_by(Day) %>%
+  summarise(avg_calories = mean(Calories))
+average_calories_by_day
+#a chart to visualize average calories between all users vs day of the week
+calories_by_day_chart <- ggplot(average_calories_by_day, aes(x = Day, y = avg_calories)) +
+  geom_bar(stat = "identity", fill = "darkorchid") +
+  labs(title = "Average Calories burned by Day of the Week", 
+       x = "Weekday", 
+       y = "Calories burned") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(2150, max(average_calories_by_day$avg_calories), by = 30)) +
+  coord_cartesian(ylim = c(2150, max(average_calories_by_day$avg_calories)))
+calories_by_day_chart
+```
+
+## Reading and merging sleep data into our "dailyTotal" table
+
+I also had a sleep data file seperate from the "dailyTotal" dataframe, which I wanted to include(to see if there's any insights we could gather for sleep vs our other data variables). I did a merge, which would be similar to an SQL "inner join" (only matching data from both tables would be added)
+```{r}
+sleepdf<-read_excel("~/Downloads/sleepDay_merged.xlsx")
+
+#renaming day name column so they match on both tables, making it easier on us to merge later 
+sleepdf <- sleepdf %>%
+  rename(ActivityDate = SleepDay)
+#doing an inner join between sleep data and dailyActivity data, so we can make inferences on sleep vs other metrics
+sleep_and_day<-merge(dailyTotal, sleepdf, by = c("Id", "ActivityDate"), all = FALSE)
+
+```
+To make the merge easier we converted the name of SleepDay column to ActivityDate in sleep df. They both represent the same date data. 
+
+## Total Sleep vs time in Bed
+
+```{r}
+#comparing total time in bed vs total minutes asleep, relationship appears to be strongly positive
+totalSleep_and_totalInBed<-ggplot(data=sleep_and_day, aes(x=TotalMinutesAsleep, y=TotalTimeInBed)) + 
+  geom_point()+ labs(title="Minutes Asleep vs. Total Time in Bed")
+totalSleep_and_totalInBed
+```
+
+Here we see a strong positive correlation, which inherently makes sense as you would be more likely to sleep longer the longer you are in bed. However a product tweak would be a sleep goal reminder, to help remind those in bed for "x" minutes that they should sleep soon to hit their sleep goal. 
+
+## Steps vs Total Sleep
+
+We then use similar logic to the previous chart, to compare steps vs total sleep
+```{r}
+#comparing steps and minutes asleep, no correlation is apparent
+totalSleep_and_totalSteps<-ggplot(data=sleep_and_day, aes(x=TotalMinutesAsleep, y=TotalSteps)) + 
+  geom_point()+ labs(title="Steps vs. Total Time in Bed")
+totalSleep_and_totalSteps
+```
+
+## Sedentary Minutes vs Sleep
+
+We then compare sedentary minutes(time spent with no activity) vs total sleep.
+
+```{r}
+totalSleep_and_sedentaryMinutes<-ggplot(data=sleep_and_day, aes(x=TotalMinutesAsleep, y=SedentaryMinutes)) + 
+  geom_point()+ labs(title="Sedentary Minutes vs. Total Time in Bed")
+totalSleep_and_sedentaryMinutes
+
+```
+
+
+This I believe is one of our most powerful charts. Although the relationship isn't incredibly strong there is a negative relationship between high number of minutes spent inactive and total minutes asleep. This information has been supported by several outside studies, showing that exercise can help with sleep time and quality. I believe this is a spot for Bellabeat to give their users a reminder to hit some sort of "activity" goal whether its steps, very active minutes, etc., if the system is able to recognize a less sleep time than normal for a given user.
+
+<span style="color: #FF6666; font-size: 1.5em;">Share:</span>
+
+Based on the data above, I believe these are the most important insights for Bellabeat to consider:
+
+ * There are two times throughout the day where people tend to have "higher" levels of activity, this includes 12-3 p.m., and 5-7 p.m., with the 5-7 time slot being the more intense of the two.
+ 
+ *People tend to be the most active on Monday, Tuesday, and Saturday. While Sunday and Thursdays are less active days on average.
+ 
+ *Monday has a large variability, where it seems there are 2 groups on that day. One group who wants to be really active and the other group which does not want to be active at all. 
+ 
+ *There is a clear and positive correlation between time in bed and total sleep
+ 
+ *There is a negative correlation between Sedentary(inactive minutes) and sleep in day.
+ 
+ 
+ 
+<span style="color: #FF6666; font-size: 1.5em;">Act:</span>
+
+
+## Conclusion:
+Before I give my recommendations, we should first consider the limitations of our data. The sample size is really small, and it is unknown the location of each user.(What if they are all from a small city, we cannot assume they have the same fitness habits as people from a large metropolitan.)
+Also the data is limited from april to may of one specific year. What if these are only fitness trends specific to this time of the month, it woundn't make sense to employ the same advertising strategy year round. 
+And finally, the data is small although we can draw conclusions from the data. To be more confident in our recommendations a much larger sample size must be given, varying across age, location, time of year, etc..
+
+<u>Recommendations:</u>
+
+ *Target advertising during "off" hours. People would feel more motivated to purchase fitness products during a time where they are inactive, this could be in the morning, 3-5 p.m.(time when people are getting ready to leave work), and after 8 p.m.
+ 
+ *Using similar logic we could target during "off" days. This would be Sunday, Wednesday, Thursday.
+ 
+ *Giving users sleep goal reminders if they are in bed. 
+ 
+ *Reminding users to hit some sort of "activity" goal for the day if they are low in sleep, this is up to their discretion. However we could remind users that it could potentially help their sleep length/quality.
+
